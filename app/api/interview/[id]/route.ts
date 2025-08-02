@@ -107,7 +107,11 @@ export async function PATCH(
     }
 
     // Update status and set startDateTime if starting interview
-    const updateData: any = {
+    const updateData: {
+      status: string;
+      updated_at: string;
+      start_date_time?: string;
+    } = {
       status,
       updated_at: new Date().toISOString()
     };
