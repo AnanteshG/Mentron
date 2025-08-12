@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,11 +27,25 @@ interface UserProfile {
   updated_at?: string;
 }
 
+interface ResumePayload {
+  fileUrl: string;
+  fileContent: string;
+  fileName: string;
+  fileType: string;
+}
+
+interface ErrorResponse {
+  error?: string;
+  [key: string]: any;
+}
+
 export default function NewInterviewPage() {
   const router = useRouter();
+  const uploadInProgress = useRef(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [fetchLoading, setFetchLoading] = useState(true);
+  const [uploadLoading, setUploadLoading] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
   // Step 1: Resume Upload
@@ -47,7 +61,7 @@ export default function NewInterviewPage() {
   // Step 3: Mentor Selection
   const [selectedMentor, setSelectedMentor] = useState<string | null>(null);
 
-  const fetchUserProfile = useCallback(async () => {
+  const fetchUserProfile = async () => {
     try {
       setFetchLoading(true);
       const response = await fetch('/api/user-profile');
@@ -55,20 +69,9 @@ export default function NewInterviewPage() {
 
       if (data.success && data.userProfile) {
         setUserProfile(data.userProfile);
-        // Only update resumeSummary and useExistingResume if values have actually changed
-        // and we're not currently uploading a resume
-        if (
-          data.userProfile.resume_summary &&
-          data.userProfile.resume_summary !== resumeSummary &&
-          !loading // Prevent state updates during upload
-        ) {
+        // Set resume summary and useExistingResume only if we don't have them yet
+        if (data.userProfile.resume_summary && !resumeSummary) {
           setResumeSummary(data.userProfile.resume_summary);
-        }
-        if (
-          data.userProfile.resume_summary &&
-          !useExistingResume &&
-          !loading // Prevent state updates during upload
-        ) {
           setUseExistingResume(true);
         }
       }
@@ -77,12 +80,12 @@ export default function NewInterviewPage() {
     } finally {
       setFetchLoading(false);
     }
-  }, [resumeSummary, useExistingResume, loading]);
+  };
 
   // Fetch existing user profile on mount
   useEffect(() => {
     fetchUserProfile();
-  }, [fetchUserProfile]);
+  }, []); // Only run once on mount
 
   const resetUserProfile = async () => {
     try {
@@ -127,103 +130,130 @@ export default function NewInterviewPage() {
   };
 
   const uploadResume = async () => {
-    if (!selectedFile) return false;
+    console.log('=== UPLOAD START ===');
+    console.log('uploadInProgress.current:', uploadInProgress.current);
+    console.log('selectedFile:', !!selectedFile);
+    console.log('uploadLoading:', uploadLoading);
 
-    setLoading(true);
+    // Multiple protection layers
+    if (uploadInProgress.current) {
+      console.log('BLOCKED: Upload already in progress (ref)');
+      return false;
+    }
+
+    if (!selectedFile) {
+      console.log('BLOCKED: No file selected');
+      return false;
+    }
+
+    if (uploadLoading) {
+      console.log('BLOCKED: Upload loading state is true');
+      return false;
+    }
+
+    // Set all guards
+    uploadInProgress.current = true;
+    setUploadLoading(true);
 
     try {
-      // Generate a unique filename
-      const fileExt = selectedFile.name.split('.').pop();
-      const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
-      const filePath = `resumes/${fileName}`;
+      console.log('Starting file upload process...');
 
-      // Upload file to Supabase Storage
-      const { error: uploadError } = await supabase.storage
+      // Create filename
+      const fileExtension = selectedFile.name.split('.').pop() || 'pdf';
+      const timestamp = new Date().getTime();
+      const randomId = Math.floor(Math.random() * 1000000);
+      const fileName = `resume_${timestamp}_${randomId}.${fileExtension}`;
+      const storagePath = `resumes/${fileName}`;
+
+      console.log('Uploading file:', fileName);
+
+      // Upload to Supabase
+      const uploadResult = await supabase.storage
         .from(STORAGE_BUCKET)
-        .upload(filePath, selectedFile);
+        .upload(storagePath, selectedFile);
 
-      if (uploadError) {
-        throw uploadError;
+      if (uploadResult.error) {
+        console.error('Supabase upload failed:', uploadResult.error);
+        throw new Error(`Upload failed: ${uploadResult.error.message}`);
       }
 
-      // Get file URL
-      const { data: fileData } = supabase.storage
+      console.log('File uploaded to Supabase successfully');
+
+      // Get public URL
+      const urlResult = supabase.storage
         .from(STORAGE_BUCKET)
-        .getPublicUrl(filePath);
+        .getPublicUrl(storagePath);
 
-      const fileUrl = fileData.publicUrl;
+      const publicUrl = urlResult.data.publicUrl;
+      console.log('Got public URL:', publicUrl);
 
-      // Handle file content based on file type
-      let fileContent = '';
+      // Prepare API request
+      let requestPayload: ResumePayload;
 
       if (selectedFile.type === 'application/pdf') {
-        // For PDF files, send the file as ArrayBuffer to be processed on the server
-        const arrayBuffer = await selectedFile.arrayBuffer();
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+        console.log('Processing PDF file...');
+        const buffer = await selectedFile.arrayBuffer();
+        const base64Content = btoa(String.fromCharCode(...new Uint8Array(buffer)));
 
-        // Send PDF file to API for processing
-        const response = await fetch('/api/process-resume', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            fileUrl: fileUrl,
-            fileContent: base64,
-            fileName: selectedFile.name,
-            fileType: 'pdf',
-          }),
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-          // Batch state updates to prevent recursion
-          setResumeSummary(data.resumeSummary);
-          setUserProfile(data.userProfile);
-          setUseExistingResume(false); // They uploaded a new resume
-          return true;
-        } else {
-          alert('Failed to process resume: ' + data.error);
-          return false;
-        }
+        requestPayload = {
+          fileUrl: publicUrl,
+          fileContent: base64Content,
+          fileName: selectedFile.name,
+          fileType: 'pdf'
+        };
       } else {
-        // For text files, read content directly
-        fileContent = await selectedFile.text();
+        console.log('Processing text file...');
+        const textContent = await selectedFile.text();
 
-        // Send file content to API for AI processing
-        const response = await fetch('/api/process-resume', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            fileUrl: fileUrl,
-            fileContent,
-            fileName: selectedFile.name,
-            fileType: 'text',
-          }),
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-          // Batch state updates to prevent recursion
-          setResumeSummary(data.resumeSummary);
-          setUserProfile(data.userProfile);
-          setUseExistingResume(false); // They uploaded a new resume
-          return true;
-        } else {
-          alert('Failed to process resume: ' + data.error);
-          return false;
-        }
+        requestPayload = {
+          fileUrl: publicUrl,
+          fileContent: textContent,
+          fileName: selectedFile.name,
+          fileType: 'text'
+        };
       }
+
+      console.log('Sending to processing API...');
+
+      // Call processing API
+      const apiResponse = await fetch('/api/process-resume', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestPayload),
+      });
+
+      if (!apiResponse.ok) {
+        throw new Error(`API request failed: ${apiResponse.status}`);
+      }
+
+      const apiResult = await apiResponse.json();
+      console.log('API processing result:', apiResult);
+
+      if (!apiResult.success) {
+        throw new Error(apiResult.error || 'Processing failed');
+      }
+
+      // Update state only if successful
+      console.log('Updating state with results...');
+      setResumeSummary(apiResult.resumeSummary);
+      setUserProfile(apiResult.userProfile);
+      setUseExistingResume(false);
+
+      console.log('Upload completed successfully');
+      return true;
+
     } catch (error) {
-      console.error('Error uploading resume:', error);
-      alert('Failed to upload resume');
+      console.error('Upload failed with error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      alert(`Failed to upload resume: ${errorMessage}`);
       return false;
     } finally {
-      setLoading(false);
+      console.log('Cleaning up upload state...');
+      uploadInProgress.current = false;
+      setUploadLoading(false);
+      console.log('=== UPLOAD END ===');
     }
   };
 
@@ -321,7 +351,6 @@ export default function NewInterviewPage() {
         },
         body: JSON.stringify(requestBody),
       });
-
       console.log('Response status:', response.status);
 
       if (!response.ok) {
@@ -359,44 +388,72 @@ export default function NewInterviewPage() {
   };
 
   const handleNextStep = async () => {
-    console.log('handleNextStep called:', {
-      currentStep,
-      useExistingResume,
-      resumeSummary: !!resumeSummary,
-      resumeSummaryLength: resumeSummary?.length,
-      selectedFile: !!selectedFile,
-      userProfile: !!userProfile
-    });
+    console.log('=== HANDLE NEXT STEP START ===');
+    console.log('Current step:', currentStep);
+    console.log('uploadInProgress.current:', uploadInProgress.current);
+    console.log('uploadLoading:', uploadLoading);
 
-    if (currentStep === 1) {
-      // Step 1: Resume processing
-      if (useExistingResume && resumeSummary) {
-        console.log('Using existing resume, proceeding to step 2');
-        setCurrentStep(2);
-      } else if (useExistingResume && !resumeSummary) {
-        // If they selected use existing but no summary, try to get it from userProfile
-        if (userProfile?.resume_summary) {
-          console.log('Setting resume summary from user profile and proceeding');
+    // Block if upload is in progress
+    if (uploadInProgress.current || uploadLoading) {
+      console.log('BLOCKED: Upload in progress, cannot proceed');
+      return;
+    }
+
+    try {
+      if (currentStep === 1) {
+        console.log('=== STEP 1: Resume Processing ===');
+
+        if (useExistingResume && resumeSummary) {
+          console.log('Using existing resume, proceeding to step 2');
+          setCurrentStep(2);
+          return;
+        }
+
+        if (useExistingResume && !resumeSummary && userProfile?.resume_summary) {
+          console.log('Setting resume summary from user profile');
           setResumeSummary(userProfile.resume_summary);
           setCurrentStep(2);
-        } else {
+          return;
+        }
+
+        if (useExistingResume && !resumeSummary) {
           alert('No existing resume found. Please upload a new resume.');
+          return;
         }
-      } else if (selectedFile) {
-        console.log('Uploading new resume file');
-        const success = await uploadResume();
-        if (success) {
+
+        if (!selectedFile) {
+          alert('Please upload a resume or use your existing one');
+          return;
+        }
+
+        // Call upload function
+        console.log('Calling uploadResume function...');
+        const uploadResult = await uploadResume();
+        console.log('Upload function returned:', uploadResult);
+
+        if (uploadResult === true) {
+          console.log('Upload successful, proceeding to step 2');
           setCurrentStep(2);
+        } else {
+          console.log('Upload failed, staying on step 1');
         }
-      } else {
-        alert('Please upload a resume or use your existing one');
+        return;
       }
-    } else if (currentStep === 2) {
-      // Step 2: Job processing
-      const success = await processJobDetails();
-      if (success) {
-        setCurrentStep(3);
+
+      if (currentStep === 2) {
+        console.log('=== STEP 2: Job Processing ===');
+        const jobResult = await processJobDetails();
+        if (jobResult === true) {
+          setCurrentStep(3);
+        }
+        return;
       }
+
+    } catch (error) {
+      console.error('Error in handleNextStep:', error);
+      alert('An unexpected error occurred. Please try again.');
+    } finally {
+      console.log('=== HANDLE NEXT STEP END ===');
     }
   };
 
@@ -529,7 +586,7 @@ export default function NewInterviewPage() {
                           variant="default"
                           size="sm"
                           onClick={resetUserProfile}
-                          disabled={loading}
+                          disabled={loading || uploadLoading}
                         >
                           {loading ? (
                             <>
@@ -759,14 +816,15 @@ export default function NewInterviewPage() {
                 onClick={handleNextStep}
                 disabled={
                   loading ||
+                  uploadLoading ||
                   (currentStep === 1 && !useExistingResume && !selectedFile) ||
                   (currentStep === 1 && useExistingResume && !userProfile?.resume_summary)
                 }
               >
-                {loading ? (
+                {(loading || uploadLoading) ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Processing...
+                    {uploadLoading ? 'Uploading...' : 'Processing...'}
                   </>
                 ) : (
                   'Next'

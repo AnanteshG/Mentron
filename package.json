@@ -2,6 +2,12 @@
   "name": "mentron",
   "version": "0.1.0",
   "private": true,
+  "author": "AnanteshG",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AnanteshG/Mentron.git"
+  },
+  "homepage": "https://github.com/AnanteshG/Mentron",
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",

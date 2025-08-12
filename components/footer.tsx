@@ -38,13 +38,13 @@ const Footer = React.forwardRef<
                 Created by
               </span>
               <a
-                href="https://vivekthakur.dev"
+                href="https://github.com/AnanteshG"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="group relative inline-block"
               >
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-pink-500 dark:from-purple-300 dark:to-orange-200 hover:from-purple-700 hover:to-pink-600 dark:hover:from-purple-200 dark:hover:to-orange-100 transition-all duration-300">
-                  Vivek Thakur
+                  AnanteshG
                 </span>
                 <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-purple-600 to-pink-500 dark:from-purple-300 dark:to-orange-200 group-hover:w-full transition-all duration-300"></span>
               </a>
@@ -53,7 +53,7 @@ const Footer = React.forwardRef<
             {/* Social Media Links */}
             <div className="flex items-center gap-3">
               <a
-                href="https://x.com/vivekvt_"
+                href="https://x.com/AnanteshG_"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="p-2 text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-all duration-300"
@@ -62,7 +62,7 @@ const Footer = React.forwardRef<
                 <Twitter size={18} />
               </a>
               <a
-                href="https://linkedin.com/in/vivekvt"
+                href="https://linkedin.com/in/ananteshg"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="p-2 text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-all duration-300"
@@ -71,7 +71,7 @@ const Footer = React.forwardRef<
                 <Linkedin size={18} />
               </a>
               <a
-                href="mailto:contact@vivekthakur.dev"
+                href="mailto:contact@ananteshg.dev"
                 className="p-2 text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-all duration-300"
                 aria-label="Send email"
               >
