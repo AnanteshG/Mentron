@@ -14,12 +14,12 @@ export default function Home() {
       </div>
       <HeroSection
         className="h-screen flex items-center justify-center"
-        title={`Welcome to ${appConfig?.title}`}
+        title="Get Started with Mentron"
         subtitle={{
-          regular: 'AI-Powered ',
-          gradient: 'Mock Interview',
+          regular: 'Level Up Your ',
+          gradient: 'Interview',
         }}
-        description="Practice real-world interviews with instant feedback anytime, anywhere"
+        description="Practice real-world interviews with an AI coach that gives you instant insights and personalized feedback"
         ctaText="Start Interview"
         ctaHref="/interview/new"
         gridOptions={{

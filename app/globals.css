@@ -142,3 +142,53 @@
     cursor: pointer;
   }
 }
+
+/* Custom futuristic animations */
+@keyframes fade-in-up {
+  0% {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes gradient-x {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.8s ease-out forwards;
+}
+
+.animate-gradient-x {
+  background-size: 200% 200%;
+  animation: gradient-x 3s ease infinite;
+}
+
+.animation-delay-200 {
+  animation-delay: 0.2s;
+  opacity: 0;
+}
+
+.animation-delay-400 {
+  animation-delay: 0.4s;
+  opacity: 0;
+}
+
+/* Responsive font scaling for mobile */
+@media (max-width: 640px) {
+  .text-responsive-hero {
+    font-size: clamp(2rem, 8vw, 4rem);
+  }
+  .text-responsive-subtitle {
+    font-size: clamp(1.25rem, 5vw, 2rem);
+  }
+}

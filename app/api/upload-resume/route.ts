@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { supabase, STORAGE_BUCKET } from '@/lib/supabase';
+import { supabaseAdmin, STORAGE_BUCKET } from '@/lib/supabase';
 import { google } from '@ai-sdk/google';
 import { generateText } from 'ai';
 
@@ -11,6 +11,18 @@ export async function POST(req: NextRequest) {
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    if (!supabaseAdmin) {
+      console.error('Supabase admin client not available');
+      console.error('SUPABASE_SERVICE_ROLE_KEY exists:', !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+      console.error('NEXT_PUBLIC_SUPABASE_URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+      return NextResponse.json(
+        { error: 'Internal server error' },
+        { status: 500 }
+      );
+    }
+
+    console.log('Using supabaseAdmin for upload. Service role key length:', process.env.SUPABASE_SERVICE_ROLE_KEY?.length || 0);
 
     const formData = await req.formData();
     const file = formData.get('resume') as File;
@@ -23,7 +35,7 @@ export async function POST(req: NextRequest) {
     const fileName = `${userId}-${Date.now()}-${file.name}`;
     
     // Upload file to Supabase Storage
-    const { error: storageError } = await supabase
+    const { error: storageError } = await supabaseAdmin
       .storage
       .from(STORAGE_BUCKET)
       .upload(fileName, file);
@@ -37,7 +49,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Get file URL
-    const { data: publicUrlData } = supabase
+    const { data: publicUrlData } = supabaseAdmin
       .storage
       .from(STORAGE_BUCKET)
       .getPublicUrl(fileName);
@@ -58,7 +70,7 @@ export async function POST(req: NextRequest) {
     const timestamp = new Date().toISOString();
     
     // Check if user profile exists
-    const { data: existingProfile } = await supabase
+    const { data: existingProfile } = await supabaseAdmin
       .from('user_profiles')
       .select('id')
       .eq('user_id', userId)
@@ -66,7 +78,7 @@ export async function POST(req: NextRequest) {
 
     if (existingProfile) {
       // Update existing profile
-      const { data: userProfile, error: updateError } = await supabase
+      const { data: userProfile, error: updateError } = await supabaseAdmin
         .from('user_profiles')
         .update({
           resume_url: fileUrl,
@@ -93,7 +105,7 @@ export async function POST(req: NextRequest) {
       });
     } else {
       // Create new profile
-      const { data: userProfile, error: insertError } = await supabase
+      const { data: userProfile, error: insertError } = await supabaseAdmin
         .from('user_profiles')
         .insert({
           user_id: userId,

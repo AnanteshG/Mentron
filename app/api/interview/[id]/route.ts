@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 
 export async function GET(
   req: NextRequest,
@@ -10,18 +10,41 @@ export async function GET(
     const { id } = await params;
     const { userId } = await auth();
 
+    console.log('GET /api/interview/[id] - User ID:', userId, 'Interview ID:', id);
+
     if (!userId) {
+      console.log('Unauthorized: No user ID');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    if (!supabaseAdmin) {
+      console.error('Supabase admin client not available');
+      return NextResponse.json(
+        { error: 'Internal server error' },
+        { status: 500 }
+      );
+    }
+
     // Get interview from Supabase
-    const { data: interview, error } = await supabase
+    console.log('Fetching interview from database...');
+    const { data: interview, error } = await supabaseAdmin
       .from('interviews')
       .select('*')
       .eq('id', id)
       .single();
 
-    if (error || !interview) {
+    console.log('Database query result:', { interview: !!interview, error });
+
+    if (error) {
+      console.error('Database error:', error);
+      return NextResponse.json(
+        { error: `Database error: ${error.message}` },
+        { status: 500 }
+      );
+    }
+
+    if (!interview) {
+      console.log('Interview not found');
       return NextResponse.json(
         { error: 'Interview not found' },
         { status: 404 }
@@ -30,6 +53,7 @@ export async function GET(
 
     // Check if user owns this interview
     if (interview.user_id !== userId) {
+      console.log('Access denied: User does not own this interview');
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
@@ -40,7 +64,7 @@ export async function GET(
       
       if (startDateTime < fiveMinutesAgo) {
         // Mark as completed if it's been more than 5 minutes
-        const { error: updateError } = await supabase
+        const { error: updateError } = await supabaseAdmin
           .from('interviews')
           .update({
             status: 'completed',
@@ -74,27 +98,73 @@ export async function PATCH(
   try {
     const { userId } = await auth();
     const { id } = await params;
+    
+    console.log('PATCH /api/interview/[id] - User ID:', userId, 'Interview ID:', id);
+    
     if (!userId) {
+      console.log('Unauthorized: No user ID');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { status } = await req.json();
+    if (!supabaseAdmin) {
+      console.error('Supabase admin client not available');
+      return NextResponse.json(
+        { error: 'Internal server error' },
+        { status: 500 }
+      );
+    }
 
-    if (
-      !status ||
-      !['scheduled', 'in-progress', 'completed'].includes(status)
-    ) {
-      return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
+    // Parse request body with better error handling
+    let body;
+    try {
+      const rawBody = await req.text();
+      console.log('Raw request body:', rawBody);
+      body = rawBody ? JSON.parse(rawBody) : {};
+    } catch (parseError) {
+      console.error('Error parsing request body:', parseError);
+      return NextResponse.json(
+        { error: 'Invalid JSON in request body' },
+        { status: 400 }
+      );
+    }
+
+    const { status } = body;
+    console.log('Requested status change:', status);
+
+    if (!status) {
+      console.log('Missing status in request body');
+      return NextResponse.json({ 
+        error: 'Status is required in request body' 
+      }, { status: 400 });
+    }
+
+    if (!['scheduled', 'in-progress', 'completed'].includes(status)) {
+      console.log('Invalid status provided:', status);
+      return NextResponse.json({ 
+        error: `Invalid status: ${status}. Must be one of: scheduled, in-progress, completed` 
+      }, { status: 400 });
     }
 
     // Get interview from Supabase
-    const { data: interview, error } = await supabase
+    console.log('Fetching interview from database...');
+    const { data: interview, error } = await supabaseAdmin
       .from('interviews')
       .select('*')
       .eq('id', id)
       .single();
 
-    if (error || !interview) {
+    console.log('Database query result:', { interview: !!interview, error });
+
+    if (error) {
+      console.error('Database error:', error);
+      return NextResponse.json(
+        { error: `Database error: ${error.message}` },
+        { status: 500 }
+      );
+    }
+
+    if (!interview) {
+      console.log('Interview not found');
       return NextResponse.json(
         { error: 'Interview not found' },
         { status: 404 }
@@ -103,6 +173,7 @@ export async function PATCH(
 
     // Check if user owns this interview
     if (interview.user_id !== userId) {
+      console.log('Access denied: User does not own this interview');
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
@@ -120,7 +191,7 @@ export async function PATCH(
       updateData.start_date_time = new Date().toISOString();
     }
 
-    const { data: updatedInterview, error: updateError } = await supabase
+    const { data: updatedInterview, error: updateError } = await supabaseAdmin
       .from('interviews')
       .update(updateData)
       .eq('id', id)

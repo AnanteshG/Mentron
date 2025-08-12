@@ -82,10 +82,12 @@ const Interview = ({
   knowledgeBase,
   role,
   mentorId,
+  interviewId,
 }: {
   knowledgeBase: string;
   role: string;
   mentorId: string;
+  interviewId?: string;
 }) => {
   const { initAvatar, startAvatar, stopAvatar, sessionState, stream } =
     useStreamingAvatarSession();
@@ -309,15 +311,56 @@ const Interview = ({
   const exitInterview = async () => {
     setExitLoading(true);
 
-    // Stop all media tracks (camera/microphone)
-    if (videoRef.current && videoRef.current.srcObject) {
-      const tracks = videoRef.current.srcObject.getTracks();
-      tracks.forEach((track: any) => track.stop());
-      videoRef.current.srcObject = null;
-    }
+    try {
+      // Stop all media tracks (camera/microphone)
+      if (videoRef.current && videoRef.current.srcObject) {
+        const tracks = videoRef.current.srcObject.getTracks();
+        tracks.forEach((track: any) => track.stop());
+        videoRef.current.srcObject = null;
+      }
 
-    await stopAvatar();
-    setIsInterviewComplete(true);
+      await stopAvatar();
+
+      // Calculate interview duration
+      const endTime = new Date();
+      const startTime = new Date(Date.now() - (300 - remainingTime) * 1000); // 5 minutes minus remaining time
+      const durationMinutes = Math.round((endTime.getTime() - startTime.getTime()) / (1000 * 60));
+
+      // Get conversation transcript from the message history
+      const transcript = messages
+        .map(msg => `${msg.sender === 'user' ? 'Candidate' : 'Interviewer'}: ${msg.text}`)
+        .join('\n');
+
+      // Save interview results
+      if (interviewId) {
+        const response = await fetch(`/api/interview/${interviewId}/results`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            transcript,
+            duration: durationMinutes,
+          }),
+        });
+
+        if (response.ok) {
+          // Redirect to results page
+          window.location.href = `/interview/${interviewId}/results`;
+          return;
+        } else {
+          console.error('Failed to save interview results');
+        }
+      }
+
+      // Fallback to the original behavior if saving fails
+      setIsInterviewComplete(true);
+    } catch (error) {
+      console.error('Error ending interview:', error);
+      setIsInterviewComplete(true);
+    } finally {
+      setExitLoading(false);
+    }
   };
 
   // Show InterviewComplete component if interview is complete
@@ -351,9 +394,8 @@ const Interview = ({
       <div className="flex flex-1 max-w-7xl mx-auto">
         {/* Video Section */}
         <div
-          className={`flex-1 transition-all duration-300 ${
-            isChatOpen ? 'lg:pr-2' : ''
-          }`}
+          className={`flex-1 transition-all duration-300 ${isChatOpen ? 'lg:pr-2' : ''
+            }`}
         >
           <div className="h-full grid grid-cols-1 lg:grid-cols-2 gap-4 no-h-[calc(100vh-140px)]">
             {/* Interviewer Video */}
@@ -419,13 +461,11 @@ const Interview = ({
 
         {/* Chat Panel */}
         <div
-          className={`flex flex-col pl-2 transition-all duration-300 ${
-            isChatOpen ? 'w-full lg:w-96 bg-muted lg:bg-background' : 'w-0'
-          } ${
-            isChatOpen
+          className={`flex flex-col pl-2 transition-all duration-300 ${isChatOpen ? 'w-full lg:w-96 bg-muted lg:bg-background' : 'w-0'
+            } ${isChatOpen
               ? 'fixed lg:relative inset-0 lg:inset-auto z-50 lg:z-auto'
               : 'hidden'
-          }`}
+            }`}
         >
           <div className="bg-muted/30 h-full flex flex-col rounded-none lg:rounded-lg lg:border">
             <div className="flex items-center justify-between py-2 px-3 border-b">
@@ -452,21 +492,18 @@ const Interview = ({
                   {messages.map((msg) => (
                     <div
                       key={msg.id}
-                      className={`flex ${
-                        msg.sender === 'user' ? 'justify-end' : 'justify-start'
-                      }`}
+                      className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'
+                        }`}
                     >
                       <div
-                        className={`max-w-[80%] ${
-                          msg.sender === 'user' ? 'order-2' : 'order-1'
-                        }`}
+                        className={`max-w-[80%] ${msg.sender === 'user' ? 'order-2' : 'order-1'
+                          }`}
                       >
                         <div
-                          className={`border rounded-lg px-3 py-2 text-sm ${
-                            msg.sender === 'user'
+                          className={`border rounded-lg px-3 py-2 text-sm ${msg.sender === 'user'
                               ? 'bg-primary text-primary-foreground'
                               : 'bg-muted'
-                          }`}
+                            }`}
                         >
                           {msg.text}
                         </div>

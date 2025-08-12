@@ -39,6 +39,7 @@ export default function InterviewPage() {
       if (interviewData.status !== 'scheduled') return interviewData;
 
       try {
+        console.log('Starting interview:', interviewId);
         const response = await fetch(`/api/interview/${interviewId}`, {
           method: 'PATCH',
           headers: {
@@ -49,16 +50,20 @@ export default function InterviewPage() {
           }),
         });
 
+        console.log('Response status:', response.status);
         const data = await response.json();
+        console.log('Response data:', data);
 
-        if (data.success) {
+        if (response.ok && data.success) {
           return data.interview;
         } else {
-          console.error('Failed to start interview:', data.error);
+          console.error('Failed to start interview:', data.error || `HTTP ${response.status}`);
+          setError(`Failed to start interview: ${data.error || `HTTP ${response.status}`}`);
           return interviewData;
         }
       } catch (error) {
         console.error('Error starting interview:', error);
+        setError(`Error starting interview: ${error instanceof Error ? error.message : 'Unknown error'}`);
         return interviewData;
       }
     },
@@ -193,6 +198,18 @@ export default function InterviewPage() {
   }
 
   if (interview.status === 'completed') {
+    // Redirect to results page for completed interviews
+    if (typeof window !== 'undefined') {
+      window.location.href = `/interview/${interviewId}/results`;
+      return (
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-lg text-gray-600">Redirecting to your results...</p>
+          </div>
+        </div>
+      );
+    }
     return <InterviewComplete />;
   }
 
@@ -202,6 +219,7 @@ export default function InterviewPage() {
         mentorId={interview.mentor_id}
         role={interview.job_title}
         knowledgeBase={getKnowledgeBase(interview)}
+        interviewId={interviewId}
       />
     </StreamingAvatarProvider>
   );

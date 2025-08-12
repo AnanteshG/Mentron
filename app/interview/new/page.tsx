@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,12 +47,7 @@ export default function NewInterviewPage() {
   // Step 3: Mentor Selection
   const [selectedMentor, setSelectedMentor] = useState<string | null>(null);
 
-  // Fetch existing user profile on mount
-  useEffect(() => {
-    fetchUserProfile();
-  }, []);
-
-  const fetchUserProfile = async () => {
+  const fetchUserProfile = useCallback(async () => {
     try {
       setFetchLoading(true);
       const response = await fetch('/api/user-profile');
@@ -60,8 +55,20 @@ export default function NewInterviewPage() {
 
       if (data.success && data.userProfile) {
         setUserProfile(data.userProfile);
-        if (data.userProfile.resume_summary) {
+        // Only update resumeSummary and useExistingResume if values have actually changed
+        // and we're not currently uploading a resume
+        if (
+          data.userProfile.resume_summary &&
+          data.userProfile.resume_summary !== resumeSummary &&
+          !loading // Prevent state updates during upload
+        ) {
           setResumeSummary(data.userProfile.resume_summary);
+        }
+        if (
+          data.userProfile.resume_summary &&
+          !useExistingResume &&
+          !loading // Prevent state updates during upload
+        ) {
           setUseExistingResume(true);
         }
       }
@@ -69,6 +76,38 @@ export default function NewInterviewPage() {
       console.error('Error fetching user profile:', error);
     } finally {
       setFetchLoading(false);
+    }
+  }, [resumeSummary, useExistingResume, loading]);
+
+  // Fetch existing user profile on mount
+  useEffect(() => {
+    fetchUserProfile();
+  }, [fetchUserProfile]);
+
+  const resetUserProfile = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/user-profile', {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Reset local state
+        setUserProfile(null);
+        setResumeSummary('');
+        setUseExistingResume(false);
+        setSelectedFile(null);
+        alert('Resume data cleared successfully. Please upload your resume again.');
+      } else {
+        alert('Failed to reset resume data: ' + data.error);
+      }
+    } catch (error) {
+      console.error('Error resetting user profile:', error);
+      alert('Failed to reset resume data');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -114,31 +153,70 @@ export default function NewInterviewPage() {
 
       const fileUrl = fileData.publicUrl;
 
-      // Read file content for AI processing
-      const fileContent = await selectedFile.text();
+      // Handle file content based on file type
+      let fileContent = '';
 
-      // Send file URL and content to API for AI processing
-      const response = await fetch('/api/process-resume', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          fileUrl: fileUrl,
-          fileContent,
-          fileName: selectedFile.name,
-        }),
-      });
+      if (selectedFile.type === 'application/pdf') {
+        // For PDF files, send the file as ArrayBuffer to be processed on the server
+        const arrayBuffer = await selectedFile.arrayBuffer();
+        const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
 
-      const data = await response.json();
+        // Send PDF file to API for processing
+        const response = await fetch('/api/process-resume', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            fileUrl: fileUrl,
+            fileContent: base64,
+            fileName: selectedFile.name,
+            fileType: 'pdf',
+          }),
+        });
 
-      if (data.success) {
-        setResumeSummary(data.resumeSummary);
-        setUserProfile(data.userProfile);
-        return true;
+        const data = await response.json();
+
+        if (data.success) {
+          // Batch state updates to prevent recursion
+          setResumeSummary(data.resumeSummary);
+          setUserProfile(data.userProfile);
+          setUseExistingResume(false); // They uploaded a new resume
+          return true;
+        } else {
+          alert('Failed to process resume: ' + data.error);
+          return false;
+        }
       } else {
-        alert('Failed to process resume: ' + data.error);
-        return false;
+        // For text files, read content directly
+        fileContent = await selectedFile.text();
+
+        // Send file content to API for AI processing
+        const response = await fetch('/api/process-resume', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            fileUrl: fileUrl,
+            fileContent,
+            fileName: selectedFile.name,
+            fileType: 'text',
+          }),
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          // Batch state updates to prevent recursion
+          setResumeSummary(data.resumeSummary);
+          setUserProfile(data.userProfile);
+          setUseExistingResume(false); // They uploaded a new resume
+          return true;
+        } else {
+          alert('Failed to process resume: ' + data.error);
+          return false;
+        }
       }
     } catch (error) {
       console.error('Error uploading resume:', error);
@@ -188,8 +266,32 @@ export default function NewInterviewPage() {
   };
 
   const createInterview = async () => {
-    if (!jobTitle || !jobSummary || !resumeSummary) {
-      alert('Please complete all steps before starting the interview');
+    console.log('Creating interview with:', {
+      jobTitle: jobTitle?.trim(),
+      jobDescription: jobDescription?.trim(),
+      jobSummary: jobSummary?.trim(),
+      resumeSummary: resumeSummary?.trim(),
+      useExistingResume,
+      selectedMentor
+    });
+
+    // Validate required fields
+    if (!jobTitle?.trim()) {
+      alert('Please enter a job title');
+      return;
+    }
+
+    if (!jobSummary?.trim()) {
+      alert('Please process the job details in step 2');
+      return;
+    }
+
+    if (!resumeSummary?.trim()) {
+      if (useExistingResume) {
+        alert('No existing resume found. Please upload a new resume.');
+      } else {
+        alert('Please upload your resume in step 1');
+      }
       return;
     }
 
@@ -201,40 +303,87 @@ export default function NewInterviewPage() {
     setLoading(true);
 
     try {
+      console.log('Sending create interview request...');
+
+      const requestBody = {
+        jobTitle: jobTitle.trim(),
+        jobDescription: jobDescription?.trim() || '',
+        jobSummary: jobSummary.trim(),
+        mentorId: selectedMentor,
+      };
+
+      console.log('Request body:', requestBody);
+
       const response = await fetch('/api/create-interview', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          jobTitle,
-          jobDescription,
-          jobSummary,
-          mentorId: selectedMentor,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
-      const data = await response.json();
+      console.log('Response status:', response.status);
 
-      if (data.success) {
+      if (!response.ok) {
+        // Try to get error details from response
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (e) {
+          errorData = { error: `HTTP ${response.status}` };
+        }
+
+        console.error('Failed to create interview:', errorData);
+        alert('Failed to create interview: ' + (errorData.error || `HTTP ${response.status}`));
+        setLoading(false);
+        return;
+      }
+
+      const data = await response.json();
+      console.log('Response data:', data);
+
+      if (data.success && data.interview?.id) {
         // Redirect to interview page
-        router.push(`/interview/${data?.interview?.id}`);
+        console.log('Interview created successfully, redirecting to:', `/interview/${data.interview.id}`);
+        router.push(`/interview/${data.interview.id}`);
       } else {
-        alert('Failed to create interview: ' + data.error);
+        console.error('Invalid response format:', data);
+        alert('Failed to create interview: Invalid response from server');
+        setLoading(false);
       }
     } catch (error) {
       console.error('Error creating interview:', error);
-      alert('Failed to create interview');
+      alert('Failed to create interview: ' + (error instanceof Error ? error.message : 'Network error'));
       setLoading(false);
     }
   };
 
   const handleNextStep = async () => {
+    console.log('handleNextStep called:', {
+      currentStep,
+      useExistingResume,
+      resumeSummary: !!resumeSummary,
+      resumeSummaryLength: resumeSummary?.length,
+      selectedFile: !!selectedFile,
+      userProfile: !!userProfile
+    });
+
     if (currentStep === 1) {
       // Step 1: Resume processing
       if (useExistingResume && resumeSummary) {
+        console.log('Using existing resume, proceeding to step 2');
         setCurrentStep(2);
+      } else if (useExistingResume && !resumeSummary) {
+        // If they selected use existing but no summary, try to get it from userProfile
+        if (userProfile?.resume_summary) {
+          console.log('Setting resume summary from user profile and proceeding');
+          setResumeSummary(userProfile.resume_summary);
+          setCurrentStep(2);
+        } else {
+          alert('No existing resume found. Please upload a new resume.');
+        }
       } else if (selectedFile) {
+        console.log('Uploading new resume file');
         const success = await uploadResume();
         if (success) {
           setCurrentStep(2);
@@ -276,58 +425,50 @@ export default function NewInterviewPage() {
         <div className="flex justify-center mb-8">
           <div className="flex items-center space-x-4">
             <div
-              className={`flex items-center space-x-2 ${
-                currentStep >= 1 ? 'text-primary' : 'text-muted-foreground'
-              }`}
+              className={`flex items-center space-x-2 ${currentStep >= 1 ? 'text-primary' : 'text-muted-foreground'
+                }`}
             >
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                  currentStep >= 1
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted'
-                }`}
+                className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep >= 1
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted'
+                  }`}
               >
                 {currentStep > 1 ? <CheckCircle className="w-5 h-5" /> : '1'}
               </div>
               <span className="text-sm font-medium">Resume</span>
             </div>
             <div
-              className={`w-8 h-px ${
-                currentStep >= 2 ? 'bg-primary' : 'bg-muted'
-              }`}
+              className={`w-8 h-px ${currentStep >= 2 ? 'bg-primary' : 'bg-muted'
+                }`}
             />
             <div
-              className={`flex items-center space-x-2 ${
-                currentStep >= 2 ? 'text-primary' : 'text-muted-foreground'
-              }`}
+              className={`flex items-center space-x-2 ${currentStep >= 2 ? 'text-primary' : 'text-muted-foreground'
+                }`}
             >
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                  currentStep >= 2
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted'
-                }`}
+                className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep >= 2
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted'
+                  }`}
               >
                 {currentStep > 2 ? <CheckCircle className="w-5 h-5" /> : '2'}
               </div>
               <span className="text-sm font-medium">Job Details</span>
             </div>
             <div
-              className={`w-8 h-px ${
-                currentStep >= 3 ? 'bg-primary' : 'bg-muted'
-              }`}
+              className={`w-8 h-px ${currentStep >= 3 ? 'bg-primary' : 'bg-muted'
+                }`}
             />
             <div
-              className={`flex items-center space-x-2 ${
-                currentStep >= 3 ? 'text-primary' : 'text-muted-foreground'
-              }`}
+              className={`flex items-center space-x-2 ${currentStep >= 3 ? 'text-primary' : 'text-muted-foreground'
+                }`}
             >
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                  currentStep >= 3
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted'
-                }`}
+                className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep >= 3
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted'
+                  }`}
               >
                 3
               </div>
@@ -351,73 +492,136 @@ export default function NewInterviewPage() {
               </div>
 
               {userProfile?.resume_summary && (
-                <div className="border border-green-200 bg-green-50 dark:bg-green-900/20 dark:border-green-800 rounded-lg p-4">
+                <div className={`border rounded-lg p-4 ${userProfile.resume_summary.includes('PDF, not a text-based resume')
+                  ? 'border-yellow-200 bg-yellow-50 dark:bg-yellow-900/20 dark:border-yellow-800'
+                  : 'border-green-200 bg-green-50 dark:bg-green-900/20 dark:border-green-800'
+                  }`}>
                   <div className="flex items-center space-x-2 mb-2">
-                    <CheckCircle className="w-5 h-5 text-green-600" />
-                    <span className="font-medium text-green-800 dark:text-green-200">
-                      Previous Resume Found
-                    </span>
+                    {userProfile.resume_summary.includes('PDF, not a text-based resume') ? (
+                      <>
+                        <FileText className="w-5 h-5 text-yellow-600" />
+                        <span className="font-medium text-yellow-800 dark:text-yellow-200">
+                          Resume Needs Re-processing
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="w-5 h-5 text-green-600" />
+                        <span className="font-medium text-green-800 dark:text-green-200">
+                          Previous Resume Found
+                        </span>
+                      </>
+                    )}
                   </div>
-                  <p className="text-sm text-green-700 dark:text-green-300 mb-3">
-                    {userProfile.resume_summary}
+                  <p className={`text-sm mb-3 ${userProfile.resume_summary.includes('PDF, not a text-based resume')
+                    ? 'text-yellow-700 dark:text-yellow-300'
+                    : 'text-green-700 dark:text-green-300'
+                    }`}>
+                    {userProfile.resume_summary.includes('PDF, not a text-based resume')
+                      ? 'Your PDF resume was uploaded but not properly processed. Click "Re-process Resume" to extract text with our improved PDF parser.'
+                      : userProfile.resume_summary
+                    }
                   </p>
                   <div className="flex space-x-2">
-                    <Button
-                      variant={useExistingResume ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setUseExistingResume(true)}
-                    >
-                      Use Existing Resume
-                    </Button>
-                    <Button
-                      variant={!useExistingResume ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setUseExistingResume(false)}
-                    >
-                      Upload New Resume
-                    </Button>
+                    {userProfile.resume_summary.includes('PDF, not a text-based resume') ? (
+                      <>
+                        <Button
+                          variant="default"
+                          size="sm"
+                          onClick={resetUserProfile}
+                          disabled={loading}
+                        >
+                          {loading ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Resetting...
+                            </>
+                          ) : (
+                            'Re-process Resume'
+                          )}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setUseExistingResume(false);
+                            setResumeSummary('');
+                          }}
+                        >
+                          Upload New Resume
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          variant={useExistingResume ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => {
+                            console.log('Use Existing Resume clicked:', {
+                              userProfile: !!userProfile,
+                              resumeSummary: userProfile?.resume_summary?.length
+                            });
+                            setUseExistingResume(true);
+                            setSelectedFile(null); // Clear any selected file
+                            if (userProfile?.resume_summary) {
+                              setResumeSummary(userProfile.resume_summary);
+                              console.log('Resume summary set from user profile');
+                            } else {
+                              console.warn('No resume summary found in user profile');
+                            }
+                          }}
+                        >
+                          Use Existing Resume
+                        </Button>
+                        <Button
+                          variant={!useExistingResume ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => {
+                            console.log('Upload New Resume clicked');
+                            setUseExistingResume(false);
+                            setResumeSummary(''); // Clear existing resume summary
+                          }}
+                        >
+                          Upload New Resume
+                        </Button>
+                      </>
+                    )}
                   </div>
-                </div>
-              )}
-
-              {!useExistingResume && (
-                <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center">
-                  <Upload className="w-8 h-8 mx-auto text-muted-foreground mb-4" />
-                  <div className="space-y-2">
-                    <p className="text-sm text-muted-foreground">
-                      Choose a file or drag it here
-                    </p>
-                    <input
-                      type="file"
-                      accept=".pdf,.doc,.docx,.txt"
-                      onChange={handleFileSelect}
-                      className="hidden"
-                      id="resume-upload"
-                    />
-                    <Button
-                      variant="outline"
-                      onClick={triggerFileInput}
-                      className="cursor-pointer"
-                    >
-                      Browse Files
-                    </Button>
-                  </div>
-                  {selectedFile && (
-                    <p className="mt-2 text-sm text-green-600">
-                      Selected: {selectedFile.name}
-                    </p>
+                  {useExistingResume && resumeSummary && !userProfile.resume_summary.includes('PDF, not a text-based resume') && (
+                    <div className="mt-3 p-2 bg-green-100 dark:bg-green-800/20 rounded text-sm">
+                      <span className="text-green-600 dark:text-green-400 font-medium">✓ Ready to proceed with existing resume</span>
+                    </div>
                   )}
                 </div>
               )}
 
-              {/* {resumeSummary && (
-                <div className="bg-muted p-4 rounded-lg">
-                  <h3 className="font-medium mb-2">Resume Summary:</h3>
+              <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center">
+                <Upload className="w-8 h-8 mx-auto text-muted-foreground mb-4" />
+                <div className="space-y-2">
                   <p className="text-sm text-muted-foreground">
-                    {resumeSummary}
+                    Choose a file or drag it here
                   </p>
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.txt"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    id="resume-upload"
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={triggerFileInput}
+                    className="cursor-pointer"
+                  >
+                    Upload Resume
+                  </Button>
+                  {selectedFile && (
+                    <span className="block mt-2 text-xs text-muted-foreground">
+                      Selected: {selectedFile.name}
+                    </span>
+                  )}
                 </div>
-              )} */}
+              </div>
             </div>
           )}
 
@@ -429,8 +633,7 @@ export default function NewInterviewPage() {
                   Job Details
                 </h2>
                 <p className="text-muted-foreground">
-                  Provide details about the position you&apos;re interviewing
-                  for
+                  Provide details about the position you&apos;re interviewing for
                 </p>
               </div>
 
@@ -522,21 +725,6 @@ export default function NewInterviewPage() {
                     {mentors.find((m) => m.id === selectedMentor)?.name}
                   </p>
 
-                  {/* <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left mb-6">
-                    <div className="bg-muted p-4 rounded-lg">
-                      <h4 className="font-medium mb-2">Your Profile:</h4>
-                      <p className="text-sm text-muted-foreground">
-                        {resumeSummary}
-                      </p>
-                    </div>
-                    <div className="bg-muted p-4 rounded-lg">
-                      <h4 className="font-medium mb-2">Position: {jobTitle}</h4>
-                      <p className="text-sm text-muted-foreground">
-                        {jobSummary}
-                      </p>
-                    </div>
-                  </div> */}
-
                   <Button
                     onClick={createInterview}
                     disabled={loading}
@@ -571,7 +759,8 @@ export default function NewInterviewPage() {
                 onClick={handleNextStep}
                 disabled={
                   loading ||
-                  (currentStep === 1 && !useExistingResume && !selectedFile)
+                  (currentStep === 1 && !useExistingResume && !selectedFile) ||
+                  (currentStep === 1 && useExistingResume && !userProfile?.resume_summary)
                 }
               >
                 {loading ? (

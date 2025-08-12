@@ -9,6 +9,18 @@ export function ThemeProvider({
   children,
   ...props
 }: React.ComponentProps<typeof NextThemesProvider>) {
+  const [mounted, setMounted] = React.useState(false);
+
+  // Only render children after first client render
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    // Return a placeholder with the same structure
+    return <>{children}</>;
+  }
+
   return <NextThemesProvider {...props}>{children}</NextThemesProvider>;
 }
 
