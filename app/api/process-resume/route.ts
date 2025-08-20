@@ -52,8 +52,8 @@ export async function POST(req: NextRequest) {
           const pdfParse = (await import('pdf-parse-fork')).default;
           const data = await pdfParse(buffer);
           textContent = data.text;
-        } catch (pdfParseError) {
-          console.log('pdf-parse-fork failed, trying alternative approach...');
+        } catch (error) {
+          console.log('pdf-parse-fork failed, trying alternative approach...', error);
           
           // Approach 2: Return a placeholder that indicates PDF processing is needed
           textContent = `PDF file uploaded: ${fileName}. This appears to be a valid PDF file but text extraction failed. Please ensure the PDF contains selectable text, not just images.`;

@@ -5,9 +5,6 @@ import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-// Update the import path to the correct location of Progress component
-// import { Progress } from '../../../components/ui/progress';
-import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
 import { Clock, Award, TrendingUp, CheckCircle, AlertCircle, Star } from 'lucide-react';
 

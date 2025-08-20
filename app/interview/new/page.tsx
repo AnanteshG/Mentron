@@ -27,18 +27,6 @@ interface UserProfile {
   updated_at?: string;
 }
 
-interface ResumePayload {
-  fileUrl: string;
-  fileContent: string;
-  fileName: string;
-  fileType: string;
-}
-
-interface ErrorResponse {
-  error?: string;
-  [key: string]: any;
-}
-
 export default function NewInterviewPage() {
   const router = useRouter();
   const uploadInProgress = useRef(false);
@@ -61,34 +49,34 @@ export default function NewInterviewPage() {
   // Step 3: Mentor Selection
   const [selectedMentor, setSelectedMentor] = useState<string | null>(null);
 
-  const fetchUserProfile = async () => {
-    try {
-      setFetchLoading(true);
-      const response = await fetch('/api/user-profile');
-      const data = await response.json();
-
-      if (data.success && data.userProfile) {
-        setUserProfile(data.userProfile);
-        // Set resume summary and useExistingResume only if we don't have them yet
-        if (data.userProfile.resume_summary && !resumeSummary) {
-          setResumeSummary(data.userProfile.resume_summary);
-          setUseExistingResume(true);
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching user profile:', error);
-    } finally {
-      setFetchLoading(false);
-    }
-  };
-
   // Fetch existing user profile on mount
   useEffect(() => {
+    const fetchUserProfile = async () => {
+      try {
+        setFetchLoading(true);
+        const response = await fetch('/api/user-profile');
+        const data = await response.json();
+
+        if (data.success && data.userProfile) {
+          setUserProfile(data.userProfile);
+          // Set resume summary and useExistingResume only if we don't have them yet
+          if (data.userProfile.resume_summary && !resumeSummary) {
+            setResumeSummary(data.userProfile.resume_summary);
+            setUseExistingResume(true);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching user profile:', error);
+      } finally {
+        setFetchLoading(false);
+      }
+    };
+
     fetchUserProfile();
     // Force reset upload state on mount
     uploadInProgress.current = false;
     setUploadLoading(false);
-  }, []); // Only run once on mount
+  }, [resumeSummary]); // Include resumeSummary in dependencies
 
   const resetUserProfile = async () => {
     try {
@@ -130,13 +118,6 @@ export default function NewInterviewPage() {
       'resume-upload'
     ) as HTMLInputElement;
     fileInput?.click();
-  };
-
-  const resetUploadState = () => {
-    uploadInProgress.current = false;
-    setUploadLoading(false);
-    setSelectedFile(null);
-    console.log('Upload state reset');
   };
 
   const uploadResume = async (): Promise<boolean> => {
@@ -338,7 +319,7 @@ export default function NewInterviewPage() {
         let errorData;
         try {
           errorData = await response.json();
-        } catch (e) {
+        } catch {
           errorData = { error: `HTTP ${response.status}` };
         }
 
