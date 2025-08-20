@@ -99,7 +99,7 @@ const Interview = ({
 
   const [config] = useState<StartAvatarRequest>({
     ...DEFAULT_CONFIG,
-    knowledgeBase,
+    knowledgeId: knowledgeBase,
     avatarName: mentorId || DEFAULT_CONFIG?.avatarName,
   });
 
