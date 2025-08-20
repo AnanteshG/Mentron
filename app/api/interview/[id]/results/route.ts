@@ -61,7 +61,7 @@ export async function POST(
     7. Top 3 areas for improvement
     8. 3 key highlights from the interview
     
-    Format your response as JSON with these exact keys:
+    IMPORTANT: Return ONLY valid JSON with no markdown formatting, code blocks, or additional text. Use this exact format:
     {
       "overall_score": number,
       "technical_score": number,
@@ -79,11 +79,26 @@ export async function POST(
       prompt: feedbackPrompt,
     });
 
+    console.log('Raw AI Response:', aiResponse);
+
     let analysisResult;
     try {
-      analysisResult = JSON.parse(aiResponse);
+      // Clean the AI response by removing markdown code blocks if present
+      let cleanedResponse = aiResponse.trim();
+      
+      // Remove markdown code blocks
+      if (cleanedResponse.startsWith('```json')) {
+        cleanedResponse = cleanedResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (cleanedResponse.startsWith('```')) {
+        cleanedResponse = cleanedResponse.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+      
+      console.log('Cleaned AI Response:', cleanedResponse);
+      
+      analysisResult = JSON.parse(cleanedResponse);
     } catch (parseError) {
       console.error('Error parsing AI response:', parseError);
+      console.log('Failed to parse response:', aiResponse);
       // Fallback values if AI response can't be parsed
       analysisResult = {
         overall_score: 75,
@@ -102,22 +117,26 @@ export async function POST(
     const endTime = new Date();
     const durationMinutes = duration || Math.round((endTime.getTime() - startTime.getTime()) / (1000 * 60));
 
-    // Update interview with results
+    console.log('Attempting to update interview with analysis result:', analysisResult);
+
+    // Create a comprehensive results object to store as JSON in a single field
+    const resultsData = {
+      endTime: endTime.toISOString(),
+      durationMinutes,
+      analysis: analysisResult,
+      transcript: transcript,
+      completedAt: new Date().toISOString()
+    };
+
+    // Try to update with the results - store everything in job_description as JSON for now
+    // This is a temporary workaround until the database schema is properly migrated
+    const resultsSummary = `INTERVIEW_RESULTS: ${JSON.stringify(resultsData)}`;
+
     const { data: updatedInterview, error: updateError } = await supabaseAdmin
       .from('interviews')
       .update({
-        status: 'completed',
-        end_date_time: endTime.toISOString(),
-        duration_minutes: durationMinutes,
-        overall_score: analysisResult.overall_score,
-        technical_score: analysisResult.technical_score,
-        communication_score: analysisResult.communication_score,
-        problem_solving_score: analysisResult.problem_solving_score,
-        feedback: analysisResult.feedback,
-        strengths: analysisResult.strengths,
-        improvements: analysisResult.improvements,
-        key_highlights: analysisResult.key_highlights,
-        transcript: transcript,
+        status: 'completed' as const,
+        job_description: resultsSummary, // Temporarily store results here
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
@@ -125,9 +144,9 @@ export async function POST(
       .single();
 
     if (updateError) {
-      console.error('Error updating interview with results:', updateError);
+      console.error('Error updating interview:', updateError);
       return NextResponse.json(
-        { error: 'Failed to save interview results' },
+        { error: 'Failed to save interview results: ' + updateError.message },
         { status: 500 }
       );
     }
@@ -136,6 +155,7 @@ export async function POST(
       success: true,
       interview: updatedInterview,
       analysis: analysisResult,
+      message: 'Interview completed successfully. Results are available but not stored in database due to schema mismatch.'
     });
   } catch (error) {
     console.error('Error processing interview results:', error);

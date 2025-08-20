@@ -85,6 +85,9 @@ export default function NewInterviewPage() {
   // Fetch existing user profile on mount
   useEffect(() => {
     fetchUserProfile();
+    // Force reset upload state on mount
+    uploadInProgress.current = false;
+    setUploadLoading(false);
   }, []); // Only run once on mount
 
   const resetUserProfile = async () => {
@@ -129,132 +132,109 @@ export default function NewInterviewPage() {
     fileInput?.click();
   };
 
-  const uploadResume = async () => {
-    console.log('=== UPLOAD START ===');
-    console.log('uploadInProgress.current:', uploadInProgress.current);
-    console.log('selectedFile:', !!selectedFile);
-    console.log('uploadLoading:', uploadLoading);
+  const resetUploadState = () => {
+    uploadInProgress.current = false;
+    setUploadLoading(false);
+    setSelectedFile(null);
+    console.log('Upload state reset');
+  };
 
-    // Multiple protection layers
-    if (uploadInProgress.current) {
-      console.log('BLOCKED: Upload already in progress (ref)');
+  const uploadResume = async (): Promise<boolean> => {
+    // Immediate return if conditions not met
+    if (!selectedFile || uploadInProgress.current || uploadLoading) {
       return false;
     }
 
-    if (!selectedFile) {
-      console.log('BLOCKED: No file selected');
-      return false;
-    }
-
-    if (uploadLoading) {
-      console.log('BLOCKED: Upload loading state is true');
-      return false;
-    }
-
-    // Set all guards
+    // Set blocking flags immediately
     uploadInProgress.current = true;
     setUploadLoading(true);
 
+    let success = false;
+
     try {
-      console.log('Starting file upload process...');
+      // Generate unique file nameF
+      const ext = selectedFile.name.split('.').pop() || 'pdf';
+      const uniqueId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const fileName = `resume_${uniqueId}.${ext}`;
+      const filePath = `resumes/${fileName}`;
 
-      // Create filename
-      const fileExtension = selectedFile.name.split('.').pop() || 'pdf';
-      const timestamp = new Date().getTime();
-      const randomId = Math.floor(Math.random() * 1000000);
-      const fileName = `resume_${timestamp}_${randomId}.${fileExtension}`;
-      const storagePath = `resumes/${fileName}`;
-
-      console.log('Uploading file:', fileName);
-
-      // Upload to Supabase
-      const uploadResult = await supabase.storage
+      // Step 1: Upload to Supabase Storage
+      const { error: uploadError } = await supabase.storage
         .from(STORAGE_BUCKET)
-        .upload(storagePath, selectedFile);
+        .upload(filePath, selectedFile);
 
-      if (uploadResult.error) {
-        console.error('Supabase upload failed:', uploadResult.error);
-        throw new Error(`Upload failed: ${uploadResult.error.message}`);
+      if (uploadError) {
+        throw new Error(`Storage upload failed: ${uploadError.message}`);
       }
 
-      console.log('File uploaded to Supabase successfully');
-
-      // Get public URL
-      const urlResult = supabase.storage
+      // Step 2: Get public URL
+      const { data: urlData } = supabase.storage
         .from(STORAGE_BUCKET)
-        .getPublicUrl(storagePath);
+        .getPublicUrl(filePath);
 
-      const publicUrl = urlResult.data.publicUrl;
-      console.log('Got public URL:', publicUrl);
-
-      // Prepare API request
-      let requestPayload: ResumePayload;
+      // Step 3: Prepare content for processing
+      let fileContent: string;
+      let fileType: string;
 
       if (selectedFile.type === 'application/pdf') {
-        console.log('Processing PDF file...');
-        const buffer = await selectedFile.arrayBuffer();
-        const base64Content = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+        const arrayBuffer = await selectedFile.arrayBuffer();
+        // Convert ArrayBuffer to base64 in chunks to avoid stack overflow
+        const uint8Array = new Uint8Array(arrayBuffer);
+        let binaryString = '';
+        const chunkSize = 8192; // Process in 8KB chunks
 
-        requestPayload = {
-          fileUrl: publicUrl,
-          fileContent: base64Content,
-          fileName: selectedFile.name,
-          fileType: 'pdf'
-        };
+        for (let i = 0; i < uint8Array.length; i += chunkSize) {
+          const chunk = uint8Array.slice(i, i + chunkSize);
+          binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+        }
+
+        fileContent = btoa(binaryString);
+        fileType = 'pdf';
       } else {
-        console.log('Processing text file...');
-        const textContent = await selectedFile.text();
-
-        requestPayload = {
-          fileUrl: publicUrl,
-          fileContent: textContent,
-          fileName: selectedFile.name,
-          fileType: 'text'
-        };
+        fileContent = await selectedFile.text();
+        fileType = 'text';
       }
 
-      console.log('Sending to processing API...');
-
-      // Call processing API
-      const apiResponse = await fetch('/api/process-resume', {
+      // Step 4: Send to processing API
+      const response = await fetch('/api/process-resume', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestPayload),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileUrl: urlData.publicUrl,
+          fileContent,
+          fileName: selectedFile.name,
+          fileType,
+        }),
       });
 
-      if (!apiResponse.ok) {
-        throw new Error(`API request failed: ${apiResponse.status}`);
+      if (!response.ok) {
+        throw new Error(`API request failed with status ${response.status}`);
       }
 
-      const apiResult = await apiResponse.json();
-      console.log('API processing result:', apiResult);
+      const result = await response.json();
 
-      if (!apiResult.success) {
-        throw new Error(apiResult.error || 'Processing failed');
+      if (!result.success) {
+        throw new Error(result.error || 'Processing failed');
       }
 
-      // Update state only if successful
-      console.log('Updating state with results...');
-      setResumeSummary(apiResult.resumeSummary);
-      setUserProfile(apiResult.userProfile);
+      // Step 5: Update UI state
+      setResumeSummary(result.resumeSummary);
+      setUserProfile(result.userProfile);
       setUseExistingResume(false);
 
-      console.log('Upload completed successfully');
-      return true;
+      success = true;
 
     } catch (error) {
-      console.error('Upload failed with error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      alert(`Failed to upload resume: ${errorMessage}`);
-      return false;
+      console.error('Upload error:', error);
+      alert(`Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      success = false;
     } finally {
-      console.log('Cleaning up upload state...');
+      // Always clean up
       uploadInProgress.current = false;
       setUploadLoading(false);
-      console.log('=== UPLOAD END ===');
     }
+
+    return success;
   };
 
   const processJobDetails = async () => {
@@ -387,73 +367,48 @@ export default function NewInterviewPage() {
     }
   };
 
-  const handleNextStep = async () => {
-    console.log('=== HANDLE NEXT STEP START ===');
-    console.log('Current step:', currentStep);
-    console.log('uploadInProgress.current:', uploadInProgress.current);
-    console.log('uploadLoading:', uploadLoading);
-
-    // Block if upload is in progress
+  const handleNextStep = async (): Promise<void> => {
+    // Prevent execution if upload is in progress
     if (uploadInProgress.current || uploadLoading) {
-      console.log('BLOCKED: Upload in progress, cannot proceed');
       return;
     }
 
-    try {
-      if (currentStep === 1) {
-        console.log('=== STEP 1: Resume Processing ===');
-
-        if (useExistingResume && resumeSummary) {
-          console.log('Using existing resume, proceeding to step 2');
+    if (currentStep === 1) {
+      // Handle existing resume case
+      if (useExistingResume) {
+        if (resumeSummary) {
           setCurrentStep(2);
           return;
         }
-
-        if (useExistingResume && !resumeSummary && userProfile?.resume_summary) {
-          console.log('Setting resume summary from user profile');
+        if (userProfile?.resume_summary) {
           setResumeSummary(userProfile.resume_summary);
           setCurrentStep(2);
           return;
         }
-
-        if (useExistingResume && !resumeSummary) {
-          alert('No existing resume found. Please upload a new resume.');
-          return;
-        }
-
-        if (!selectedFile) {
-          alert('Please upload a resume or use your existing one');
-          return;
-        }
-
-        // Call upload function
-        console.log('Calling uploadResume function...');
-        const uploadResult = await uploadResume();
-        console.log('Upload function returned:', uploadResult);
-
-        if (uploadResult === true) {
-          console.log('Upload successful, proceeding to step 2');
-          setCurrentStep(2);
-        } else {
-          console.log('Upload failed, staying on step 1');
-        }
+        alert('No existing resume found. Please upload a new resume.');
         return;
       }
 
-      if (currentStep === 2) {
-        console.log('=== STEP 2: Job Processing ===');
-        const jobResult = await processJobDetails();
-        if (jobResult === true) {
-          setCurrentStep(3);
-        }
+      // Handle new file upload case
+      if (!selectedFile) {
+        alert('Please upload a resume or use your existing one');
         return;
       }
 
-    } catch (error) {
-      console.error('Error in handleNextStep:', error);
-      alert('An unexpected error occurred. Please try again.');
-    } finally {
-      console.log('=== HANDLE NEXT STEP END ===');
+      // Call upload and wait for result
+      const uploadSuccess = await uploadResume();
+      if (uploadSuccess) {
+        setCurrentStep(2);
+      }
+      return;
+    }
+
+    if (currentStep === 2) {
+      const jobSuccess = await processJobDetails();
+      if (jobSuccess) {
+        setCurrentStep(3);
+      }
+      return;
     }
   };
 

@@ -57,7 +57,7 @@ const DemoCard = ({ image, name }: { image: string; name: string }) => {
 export function DemosSection() {
   return (
     <div className="relative flex w-full flex-col items-center justify-center overflow-hidden">
-      <SectionHeading
+      {/* <SectionHeading
         title="Demos"
         subtitle="Demos of the interviews"
         className="pt-16 pb-6"
@@ -68,7 +68,7 @@ export function DemosSection() {
         ))}
       </Marquee>
       <div className="pointer-events-none absolute inset-y-0 left-0 w-1/4 bg-gradient-to-r from-background"></div>
-      <div className="pointer-events-none absolute inset-y-0 right-0 w-1/4 bg-gradient-to-l from-background"></div>
+      <div className="pointer-events-none absolute inset-y-0 right-0 w-1/4 bg-gradient-to-l from-background"></div> */}
     </div>
   );
 }
