@@ -53,9 +53,13 @@ async function fetchAccessToken() {
     const response = await fetch('/api/get-access-token', {
       method: 'POST',
     });
-    const token = await response.text();
+    const data = await response.json();
 
-    return token;
+    if (!response.ok) {
+      throw new Error(data.error || `HTTP ${response.status}`);
+    }
+
+    return data.token;
   } catch (error) {
     console.error('Error fetching access token:', error);
     throw error;
@@ -501,8 +505,8 @@ const Interview = ({
                       >
                         <div
                           className={`border rounded-lg px-3 py-2 text-sm ${msg.sender === 'user'
-                              ? 'bg-primary text-primary-foreground'
-                              : 'bg-muted'
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted'
                             }`}
                         >
                           {msg.text}
