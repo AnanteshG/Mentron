@@ -1,31 +1,40 @@
 const HEYGEN_API_KEY = process.env.HEYGEN_API_KEY;
+const BASE_API_URL = process.env.NEXT_PUBLIC_BASE_API_URL ?? 'https://api.heygen.com';
 
 export async function POST() {
   try {
     if (!HEYGEN_API_KEY) {
-      throw new Error('API key is missing from .env');
+      console.error('HEYGEN_API_KEY missing');
+      return new Response(JSON.stringify({ error: 'HEYGEN_API_KEY missing' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
     }
-    const baseApiUrl = process.env.NEXT_PUBLIC_BASE_API_URL;
 
-    const res = await fetch(`${baseApiUrl}/v1/streaming.create_token`, {
+    const resp = await fetch(`${BASE_API_URL}/v1/streaming.create_token`, {
       method: 'POST',
       headers: {
-        'x-api-key': HEYGEN_API_KEY,
+        Authorization: `Bearer ${HEYGEN_API_KEY}`,
+        'Content-Type': 'application/json',
       },
+      body: JSON.stringify({}), // adjust if HeyGen requires a specific body
     });
 
-    console.log('Response:', res);
+    const text = await resp.text();
+    if (!resp.ok) {
+      console.error('HeyGen create_token error status:', resp.status, 'body:', text);
+      return new Response(JSON.stringify({ error: 'HeyGen create_token error', status: resp.status, details: text }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+    }
 
-    const data = await res.json();
+    let data;
+    try { data = JSON.parse(text); } catch { data = text; }
+    const token = data?.data?.token ?? data?.token ?? null;
 
-    return new Response(data.data.token, {
-      status: 200,
-    });
-  } catch (error) {
-    console.error('Error retrieving access token:', error);
+    if (!token) {
+      console.error('Token not found in HeyGen response', data);
+      return new Response(JSON.stringify({ error: 'Token not found', details: data }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+    }
 
-    return new Response('Failed to retrieve access token', {
-      status: 500,
-    });
+    return new Response(JSON.stringify({ token }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  } catch (err) {
+    console.error('Error retrieving access token:', err);
+    return new Response(JSON.stringify({ error: 'Failed to retrieve access token' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
   }
 }
