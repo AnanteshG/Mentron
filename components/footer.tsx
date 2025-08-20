@@ -53,7 +53,7 @@ const Footer = React.forwardRef<
             {/* Social Media Links */}
             <div className="flex items-center gap-3">
               <a
-                href="https://x.com/AnanteshG_"
+                href="https://x.com/AnanteshG"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="p-2 text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-all duration-300"
@@ -71,7 +71,7 @@ const Footer = React.forwardRef<
                 <Linkedin size={18} />
               </a>
               <a
-                href="mailto:contact@ananteshg.dev"
+                href="mailto:anantesh234@gmail.com"
                 className="p-2 text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-all duration-300"
                 aria-label="Send email"
               >
