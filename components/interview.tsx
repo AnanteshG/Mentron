@@ -26,12 +26,8 @@ import {
 } from './logic';
 import {
   AvatarQuality,
-  ElevenLabsModel,
   StartAvatarRequest,
   StreamingEvents,
-  STTProvider,
-  VoiceChatTransport,
-  VoiceEmotion,
 } from '@heygen/streaming-avatar';
 import LoadingSkeleton from './loading-skeleton';
 import {
@@ -73,12 +69,10 @@ const DEFAULT_CONFIG: StartAvatarRequest = {
 };
 
 const Interview = ({
-  knowledgeBase,
   role,
   mentorId,
   interviewId,
 }: {
-  knowledgeBase: string;
   role: string;
   mentorId: string;
   interviewId?: string;

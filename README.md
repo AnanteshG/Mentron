@@ -8,12 +8,11 @@
 [![HeyGen](https://img.shields.io/badge/HeyGen-AI%20Avatar-purple)](https://heygen.com/)
 
 > **Mentron** is an innovative AI-powered mock interview platform that provides realistic interview experiences with AI mentors. Get personalized feedback, improve your skills, and ace your next job interview!
-
 ## 🎬 Demo Video
 
-![Demo Video](./public/Mentron.mp4)
+[Play Demo Video](./public/Mentron.mp4)
 
-_Watch Mentron in action - see how our AI mentors conduct realistic interviews and provide detailed feedback._
+_Watch Mentron in action — see how our AI mentors conduct realistic interviews and provide detailed feedback._
 
 ## ✨ Features
 
