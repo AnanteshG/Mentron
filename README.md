@@ -311,14 +311,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Clerk** for authentication services
 - **Vercel** for deployment platform
 
-## 📞 Support
-
-For support and questions:
-
-- 📧 Email: [your-email@example.com]
-- 🐛 Issues: [GitHub Issues](https://github.com/AnanteshG/Mentron/issues)
-- 💬 Discussions: [GitHub Discussions](https://github.com/AnanteshG/Mentron/discussions)
-
 ---
 
 <div align="center">
