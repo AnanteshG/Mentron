@@ -68,18 +68,8 @@ async function fetchAccessToken() {
 
 const DEFAULT_CONFIG: StartAvatarRequest = {
   quality: AvatarQuality.High,
-  avatarName: 'Judy_Teacher_Sitting_public',
-  knowledgeId: undefined,
-  voice: {
-    rate: 2,
-    emotion: VoiceEmotion.EXCITED,
-    model: ElevenLabsModel.eleven_flash_v2_5,
-  },
+  avatarName: 'josh_lite3_20230714',
   language: 'en',
-  voiceChatTransport: VoiceChatTransport.WEBSOCKET,
-  sttSettings: {
-    provider: STTProvider.DEEPGRAM,
-  },
 };
 
 const Interview = ({
@@ -99,8 +89,8 @@ const Interview = ({
 
   const [config] = useState<StartAvatarRequest>({
     ...DEFAULT_CONFIG,
-    knowledgeId: knowledgeBase,
-    avatarName: mentorId || DEFAULT_CONFIG?.avatarName,
+    // knowledgeId: knowledgeBase, // Temporarily comment out to test
+    avatarName: 'josh_lite3_20230714', // Use a reliable default avatar
   });
 
   const mediaStream = useRef<HTMLVideoElement>(null);
@@ -220,6 +210,8 @@ const Interview = ({
         console.log('>>>>> Avatar end message:', event);
       });
 
+      console.log('Starting avatar with config:', config);
+
       await startAvatar(config);
 
       if (isVoiceChat) {
@@ -227,6 +219,17 @@ const Interview = ({
       }
     } catch (error) {
       console.error('Error starting avatar session:', error);
+
+      // Log more details about the error
+      if (error instanceof Error) {
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+      }
+
+      // Try to extract more details from the error
+      if (error && typeof error === 'object' && 'response' in error) {
+        console.error('Error response:', error.response);
+      }
     }
   });
 

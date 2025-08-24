@@ -20,8 +20,8 @@ export const mentors = [
     name: 'Silas',
   },
   {
-    id: ' Bryan_IT_Sitting_public',
-    image: ' /mentors/Bryan_IT_Sitting_public.webp',
+    id: 'Bryan_IT_Sitting_public',
+    image: '/mentors/Bryan_IT_Sitting_public.webp',
     name: 'Bryan',
   },
   {
