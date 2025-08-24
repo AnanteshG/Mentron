@@ -11,7 +11,7 @@
 
 ## 🎬 Demo Video
 
-https://github.com/user-attachments/assets/your-video-id-here
+![Demo Video](./public/Mentron.mp4)
 
 _Watch Mentron in action - see how our AI mentors conduct realistic interviews and provide detailed feedback._
 
